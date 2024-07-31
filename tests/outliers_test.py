@@ -1,8 +1,12 @@
 import unittest
 import os
 import duckdb
-from datetime import datetime
-from coffeebeans_dataeng_exercise.outliers import Outliers  
+import logging
+from coffeebeans_dataeng_exercise.batch.batch_factory import BatchFactory
+from coffeebeans_dataeng_exercise.constants.constants import SchemaType, OperationType, FILE_PATH
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class TestOutliers(unittest.TestCase):
 
@@ -15,29 +19,12 @@ class TestOutliers(unittest.TestCase):
 
         cls.votes_file_path = 'tests/resources/votes.jsonl'
 
-        cls.con = duckdb.connect(cls.db_file)
-        cls.con.execute(f"CREATE SCHEMA IF NOT EXISTS {cls.schema};")
-        cls.con.execute(f"DROP TABLE IF EXISTS {cls.schema}.{cls.input_table};")
-        cls.con.execute(f"""
-            CREATE TABLE IF NOT EXISTS {cls.schema}.{cls.input_table} (
-                Id INTEGER PRIMARY KEY,
-                UserId INTEGER NULL,
-                PostId INTEGER NOT NULL,
-                VoteTypeId INTEGER NOT NULL,
-                CreationDate TIMESTAMP NOT NULL
-            );
-        """)
-        cls.con.execute(f"""
-            INSERT INTO {cls.schema}.{cls.input_table}
-            (SELECT Id, UserId, PostId, VoteTypeId, CreationDate FROM read_json_auto('{cls.votes_file_path}'));
-        """)
+        outlier_detection = BatchFactory.operation(OperationType.OUTLIER, [SchemaType.VOTES, SchemaType.OUTLIER], cls.db_file)
 
-        cls.db_manager = Outliers(cls.db_file)
-        cls.db_manager.create_schema_and_table(cls.schema, cls.table, cls.input_table)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.con.close()
+        if os.path.exists(cls.votes_file_path):
+            outlier_detection.run(cls.votes_file_path)
+        else:
+            logging.error(f"Data file {cls.votes_file_path} not found.")
 
     def test_view_exists(self):
         con = duckdb.connect(self.db_file)
@@ -47,28 +34,27 @@ class TestOutliers(unittest.TestCase):
 
     def test_outlier_detection(self):
         con = duckdb.connect(self.db_file)
-        self.con.execute(f"DROP TABLE IF EXISTS {self.schema}.{self.input_table};")
-        self.con.execute(f"""
-            CREATE TABLE IF NOT EXISTS {self.schema}.{self.input_table} (
-                Id INTEGER PRIMARY KEY,
-                UserId INTEGER NULL,
-                PostId INTEGER NOT NULL,
-                VoteTypeId INTEGER NOT NULL,
-                CreationDate TIMESTAMP NOT NULL
-            );
-        """)
-        self.con.execute(f"""
-            INSERT INTO {self.schema}.{self.input_table}
-            (SELECT Id, UserId, PostId, VoteTypeId, CreationDate FROM read_json_auto('{self.votes_file_path}'));
-        """)
-        self.db_manager.create_schema_and_table(self.schema, self.table, self.input_table)
+        con.execute(f"DELETE FROM {self.schema}.{self.input_table};")
+        data_ingestion = BatchFactory.operation(OperationType.INGEST, [SchemaType.VOTES], self.db_file)
+        if os.path.exists(self.votes_file_path):
+            data_ingestion.run(self.votes_file_path)
+        else:
+            logging.error(f"Data file {self.votes_file_path} not found.")
+        
+        outlier_detection = BatchFactory.operation(OperationType.OUTLIER, [SchemaType.VOTES, SchemaType.OUTLIER], self.db_file)
+
+        if os.path.exists(self.votes_file_path):
+            outlier_detection.run(self.votes_file_path)
+        else:
+            logging.error(f"Data file {self.votes_file_path} not found.")
         result = con.execute(f"SELECT * FROM {self.schema}.{self.table};").fetchall()
-        expected_outliers = [(2022, 0, 1)
-                             , (2022, 1, 3)
-                             , (2022, 2, 3)
-                             , (2022, 5, 1)
-                             , (2022, 6, 1)
-                             , (2022, 8, 1)]
+        expected_outliers = [(2022, '00', 1)
+                             , (2022, '01', 3)
+                             , (2022, '02', 3)
+                             , (2022, '05', 1)
+                             , (2022, '06', 1)
+                             , (2022, '08', 1)]
+        print(result)
         self.assertEqual(len(result), 6)
         self.assertEqual(result, expected_outliers)
         for i, row in enumerate(result):
@@ -79,11 +65,18 @@ class TestOutliers(unittest.TestCase):
         con = duckdb.connect(self.db_file)
         con.execute(f"DELETE FROM {self.schema}.{self.input_table};")
         uniform_file_path = 'tests/resources/uniform_votes.jsonl'
-        con.execute(f"""
-            INSERT INTO {self.schema}.{self.input_table}
-            (SELECT Id, UserId, PostId, VoteTypeId, CreationDate FROM read_json_auto('{uniform_file_path}'));
-        """)
-        self.db_manager.create_schema_and_table(self.schema, self.table, self.input_table)
+        data_ingestion = BatchFactory.operation(OperationType.INGEST, [SchemaType.VOTES], self.db_file)
+        if os.path.exists(uniform_file_path):
+            data_ingestion.run(uniform_file_path)
+        else:
+            logging.error(f"Data file {uniform_file_path} not found.")
+        
+        outlier_detection = BatchFactory.operation(OperationType.OUTLIER, [SchemaType.VOTES, SchemaType.OUTLIER], self.db_file)
+
+        if os.path.exists(uniform_file_path):
+            outlier_detection.run(uniform_file_path)
+        else:
+            logging.error(f"Data file {uniform_file_path} not found.")
         result = con.execute(f"SELECT * FROM {self.schema}.{self.table};").fetchall()
         self.assertEqual(len(result), 0)
         con.close()
@@ -104,14 +97,12 @@ class TestOutliers(unittest.TestCase):
     def test_empty_input_table(self):
         con = duckdb.connect(self.db_file)
         con.execute(f"DELETE FROM {self.schema}.{self.input_table};")
-        self.db_manager.create_schema_and_table(self.schema, self.table, self.input_table)
         result = con.execute(f"SELECT * FROM {self.schema}.{self.table};").fetchall()
         self.assertEqual(len(result), 0)
         con.close()
 
     def test_view_recreation(self):
         con = duckdb.connect(self.db_file)
-        self.db_manager.create_schema_and_table(self.schema, self.table, self.input_table)
         result = con.execute(f"SELECT * FROM information_schema.tables WHERE table_schema = '{self.schema}' AND table_name = '{self.table}';").fetchall()
         self.assertTrue(len(result) > 0)
         con.close()

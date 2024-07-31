@@ -255,5 +255,27 @@ Then the following should be the content of your `outlier_weeks` view:
 Please include instructions about your strategy and important decisions you made in the README file. You should also include answers to the following questions:
 
 1. What kind of data quality measures would you apply to your solution in production?
+
+When dealing with our solution in production, applying robust data quality measures is crucial for ensuring the accuracy and reliability of the processed data. Here are some key data quality measures:
+
+Validation Rules, Consistency Checks, Completeness Checks, Uniqueness, Accuracy, Range Checks, Data Profiling, Error Handling and Logging, Performance Monitoring, Data Reconciliation, Data Integrity Checks.
+
 2. What would need to change for the solution scale to work with a 10TB dataset with 5GB new data arriving each day?
+
+Scaling a solution to handle a 10TB dataset with 5GB of new data arriving each day involves several considerations and potential changes to ensure efficiency and performance. Here are key aspects to address:
+
+Use scalable storage solutions like distributed file systems (e.g., HDFS) or cloud storage services (e.g., AWS S3, Google Cloud Storage).
+Use dataproc and autoscaling 
+Data Partitioning and Bucketing of data to avoid skewness. Also, use pushdown predicate.
+Utilize distributed computing frameworks like Apache Spark or Hadoop for data processing. 
+Use a scheduler like airflow or oozie with a schedule interval of daily. Also, construct a data pipeline using Kafka.
+For outlier detection, use MLLib library for distributive computing or spark.
+Use indexing like clustered and tree indexing to improve query performance.
+Set up robust monitoring systems to track the performance and health of your data processing pipeline. Implement automated alerts and responses to handle issues promptly.
+Develop strategies for data cleanup and archiving to manage the growth of the dataset. 
+Implement access controls, encryption, and data governance practices to protect sensitive information.
+Regularly test and optimize the system to handle increased data loads. Perform stress tests to identify potential bottlenecks and make necessary adjustments.
+
 3. Please tell us in your modified README about any assumptions you have made in your solution (below).
+
+The solution assumes correct and consistent configuration of file paths, schema names, SQL queries, and operation types. It also assumes that the database connection is properly established and that the logging and error handling mechanisms are adequate for tracking the batch job execution.

@@ -1,67 +1,34 @@
-import json
+import logging
 import os
-from datetime import datetime
 
-import duckdb
+from coffeebeans_dataeng_exercise.batch.batch_factory import BatchFactory
+from coffeebeans_dataeng_exercise.constants.constants import (
+    FILE_PATH,  # Path to the data file to be processed
+)
+from coffeebeans_dataeng_exercise.constants.constants import (
+    OperationType,  # Enumeration of operation types (e.g., OUTLIER)
+)
+from coffeebeans_dataeng_exercise.constants.constants import (
+    SchemaType,  # Enumeration of schema types (e.g., VOTES, OUTLIER)
+)
 
-
-class Outliers:
-    def __init__(self, db_file):
-        self.db_file = db_file
-
-    def create_schema_and_table(self, schema, table, input_table):
-        # Connect to DuckDB
-        con = duckdb.connect(self.db_file)
-
-        # Create schema if not exists
-        con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
-
-        # Create the votes table within the specified schema if not exists
-        con.execute(f"""
-            CREATE OR REPLACE VIEW {schema}.{table} AS
-        WITH weekly_votes AS (
-            SELECT
-                EXTRACT(year FROM CreationDate) AS year,
-                CASE 
-                    WHEN EXTRACT(WEEK FROM CreationDate) = 52 AND EXTRACT(DAY FROM CreationDate) < 7 
-                    THEN 0 
-                    ELSE EXTRACT(WEEK FROM CreationDate) 
-                END AS week_number,
-                COUNT(*) AS vote_count
-            FROM {schema}.{input_table}
-            GROUP BY 1, 2
-        ),
-        overall_avg AS (
-            SELECT year, AVG(vote_count) AS avg_vote_count
-            FROM weekly_votes
-            GROUP BY 1
-        ),
-        outliers AS (
-            SELECT
-                w.year,
-                w.week_number,
-                w.vote_count,
-                o.avg_vote_count
-            FROM weekly_votes w, overall_avg o
-            WHERE ABS(1.0 - (w.vote_count / o.avg_vote_count)) > 0.2
-        )
-        SELECT
-            year,
-            week_number,
-            vote_count
-        FROM outliers
-        ORDER BY year, week_number;
-        """)
-
-        con.close()
-
+# Configure logging to display INFO level messages and above, with a specific format
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 if __name__ == "__main__":
-    db_manager = Outliers("warehouse.db")
+    """
+    Main entry point of the script. Creates and runs an outlier detection batch job.
+    """
+    # Create an instance of the batch job for outlier detection based on the operation type (OUTLIER)
+    # and schema types (VOTES and OUTLIER)
+    outlier_detection = BatchFactory.operation(
+        OperationType.OUTLIER, [SchemaType.VOTES, SchemaType.OUTLIER])
 
-    SCHEMA = "blog_analysis"
-    TABLE = "outlier_weeks"
-    INPUT_TABLE = "votes"
-
-    # Create schema and table if they do not exist
-    db_manager.create_schema_and_table(SCHEMA, TABLE, INPUT_TABLE)
+    # Check if the data file exists at the specified path
+    if os.path.exists(FILE_PATH):
+        # Run the batch job with the data file path
+        outlier_detection.run(FILE_PATH)
+    else:
+        # Log an error if the data file is not found
+        logging.error(f"Data file {FILE_PATH} not found.")
