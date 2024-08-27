@@ -17,12 +17,9 @@ WITH weekly_votes AS (
 -- Define a CTE to calculate the average vote count per year
 overall_avg AS (
   SELECT 
-    year,  -- Year from weekly_votes CTE
     AVG(vote_count) AS avg_vote_count  -- Calculate the average vote count for each year
   FROM 
     weekly_votes  -- Use the results from the weekly_votes CTE
-  GROUP BY 
-    1   -- Group by year
 ), 
 
 -- Define a CTE to identify outliers based on the average vote count
@@ -34,7 +31,8 @@ outliers AS (
     o.avg_vote_count  -- Average vote count from overall_avg CTE
   FROM 
     weekly_votes w  -- Use the weekly_votes CTE
-    INNER JOIN overall_avg o ON w.year = o.year  -- Join with overall_avg to get the average vote count
+    JOIN overall_avg o -- Join with overall_avg to get the average vote count
+    ON true  -- Since overall_avg has a single row, join without any condition
   WHERE 
     ABS(1.0 - (w.vote_count / o.avg_vote_count)) > 0.2  -- Identify outliers where vote count deviates more than 20% from the average
 ) 
